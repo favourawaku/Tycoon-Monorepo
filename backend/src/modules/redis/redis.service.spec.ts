@@ -1,13 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { redisConfig } from '../../config/redis.config';
 import { RedisService } from './redis.service';
 import { LoggerService } from '../../common/logger/logger.service';
 
 describe('RedisService', () => {
   let service: RedisService;
   let loggerService: jest.Mocked<LoggerService>;
+  const mockRedis = {
+    setex: jest.fn(),
+    get: jest.fn(),
+    del: jest.fn(),
+    incr: jest.fn(),
+    expire: jest.fn(),
+    keys: jest.fn(),
+    quit: jest.fn(),
+    on: jest.fn(),
+  };
+  const mockCacheManager = {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+  };
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const mockLoggerService = {
       log: jest.fn(),
       error: jest.fn(),
@@ -15,25 +32,13 @@ describe('RedisService', () => {
       debug: jest.fn(),
     };
 
-    const mockCacheManager = {
-      get: jest.fn(),
-      set: jest.fn(),
-      del: jest.fn(),
-    };
-
-    const mockRedis = {
-      setex: jest.fn(),
-      get: jest.fn(),
-      del: jest.fn(),
-      incr: jest.fn(),
-      expire: jest.fn(),
-      keys: jest.fn(),
-      quit: jest.fn(),
-      on: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
-      imports: [ConfigModule],
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [redisConfig],
+        }),
+      ],
       providers: [
         RedisService,
         {
@@ -41,7 +46,7 @@ describe('RedisService', () => {
           useValue: mockLoggerService,
         },
         {
-          provide: 'CACHE_MANAGER',
+          provide: CACHE_MANAGER,
           useValue: mockCacheManager,
         },
       ],
@@ -49,9 +54,13 @@ describe('RedisService', () => {
 
     service = module.get<RedisService>(RedisService);
     loggerService = module.get(LoggerService);
-
-    // Mock the Redis instance
+    const liveClient = (service as any).redis as { quit: () => Promise<string> };
+    await liveClient.quit().catch(() => undefined);
     (service as any).redis = mockRedis;
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
